@@ -1,7 +1,6 @@
 {
-  "name": "agent-q-real",
+  "name": "agent-q-scraper",
   "version": "1.0.0",
-  "description": "Agente Q para encontrar piezas según VIN y marca.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
