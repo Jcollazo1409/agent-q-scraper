@@ -20,6 +20,7 @@ app.post('/vin', async (req, res) => {
 
     const page = await browser.newPage();
     await page.goto('https://www.realoem.com/bmw/enUS/select', { waitUntil: 'domcontentloaded' });
+
     await page.type('#vin', vin);
     await Promise.all([
       page.click('button[type="submit"]'),
@@ -28,7 +29,7 @@ app.post('/vin', async (req, res) => {
 
     const html = await page.content();
     const lowerHTML = html.toLowerCase();
-    const partMatch = lowerHTML.match(/\b[0-9]{7}\b/g);
+    const partMatch = lowerHTML.match(/\\b[0-9]{7}\\b/g); // Buscar códigos de parte de 7 dígitos
 
     await browser.close();
 
