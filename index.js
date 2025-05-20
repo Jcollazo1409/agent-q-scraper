@@ -18,17 +18,14 @@ app.post('/vin', async (req, res) => {
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     const page = await browser.newPage();
-    await page.goto('https://www.realoem.com/bmw/enUS/select', { waitUntil: 'domcontentloaded' });
 
+    await page.goto('https://www.realoem.com/bmw/enUS/select', { waitUntil: 'domcontentloaded' });
     await page.type('#vin', vin);
     await Promise.all([
       page.click('button[type="submit"]'),
       page.waitForNavigation({ waitUntil: 'domcontentloaded' })
     ]);
 
-    const currentURL = page.url();
-
-    // Buscar links que contengan el nombre de la pieza (ej. "blower", "regulator")
     const links = await page.$$eval('a', (elements) =>
       elements
         .filter(el => el.textContent.toLowerCase().includes('blower') || el.textContent.toLowerCase().includes('regulator'))
@@ -36,14 +33,18 @@ app.post('/vin', async (req, res) => {
     );
 
     let partNumbers = [];
+    let matchPage = 'none';
 
-    if (links.length > 0) {
-      await page.goto(links[0].href, { waitUntil: 'domcontentloaded' });
-
-      const html = await page.content();
-      const matches = html.match(/\b[0-9]{7}\b/g);
-      if (matches) {
-        partNumbers = [...new Set(matches)];
+    for (const link of links) {
+      await page.goto(link.href, { waitUntil: 'domcontentloaded' });
+      const content = await page.content().toLowerCase();
+      if (content.includes(pieza.toLowerCase())) {
+        const matches = content.match(/\b[0-9]{7}\b/g);
+        if (matches) {
+          partNumbers = [...new Set(matches)];
+          matchPage = link.text;
+          break;
+        }
       }
     }
 
@@ -52,9 +53,9 @@ app.post('/vin', async (req, res) => {
     return res.json({
       vin,
       pieza,
-      category_found: links.length > 0 ? links[0].text : 'No encontrada',
+      category_found: matchPage,
       found_parts: partNumbers,
-      source: 'RealOEM (v2)',
+      source: 'RealOEM (v2.1)',
       success: partNumbers.length > 0
     });
 
@@ -64,9 +65,9 @@ app.post('/vin', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Agent Q v2 (RealOEM Deep Scraper) is running');
+  res.send('Agent Q v2.1 is running');
 });
 
 app.listen(PORT, () => {
-  console.log(`Agent Q v2 running on port ${PORT}`);
+  console.log(`Agent Q v2.1 running on port ${PORT}`);
 });
