@@ -1,28 +1,52 @@
 const express = require('express');
+const puppeteer = require('puppeteer');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-app.post('/vin', (req, res) => {
-  const { vin, pieza, marca } = req.body;
+app.post('/vin', async (req, res) => {
+  const { vin, pieza } = req.body;
 
-  console.log('Request received:', vin, pieza, marca);
+  if (!vin || !pieza) {
+    return res.status(400).json({ error: 'VIN y pieza son requeridos' });
+  }
 
-  // Aquí se podría conectar scraping real, por ahora es placeholder
-  const partNumber = `${marca?.slice(0, 3)?.toUpperCase() || 'GEN'}-123456`;
+  try {
+    const browser = await puppeteer.launch({
+      headless: 'new',
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
-  res.json({
-    vin,
-    pieza,
-    marca,
-    part_number: partNumber,
-    source: 'AgentQ'
-  });
+    const page = await browser.newPage();
+    await page.goto('https://www.realoem.com/bmw/enUS/select', { waitUntil: 'domcontentloaded' });
+    await page.type('#vin', vin);
+    await Promise.all([
+      page.click('button[type="submit"]'),
+      page.waitForNavigation({ waitUntil: 'domcontentloaded' })
+    ]);
+
+    const html = await page.content();
+    const lowerHTML = html.toLowerCase();
+    const partMatch = lowerHTML.match(/\b[0-9]{7}\b/g);
+
+    await browser.close();
+
+    return res.json({
+      vin,
+      pieza,
+      found_parts: partMatch ? [...new Set(partMatch)] : [],
+      source: 'RealOEM',
+      success: partMatch !== null
+    });
+
+  } catch (error) {
+    return res.status(500).json({ error: error.toString() });
+  }
 });
 
 app.get('/', (req, res) => {
-  res.send('Agent Q is live 🚗');
+  res.send('Agent Q (RealOEM BMW Scraper) is running');
 });
 
 app.listen(PORT, () => {
