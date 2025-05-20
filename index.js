@@ -17,7 +17,6 @@ app.post('/vin', async (req, res) => {
       headless: 'new',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-
     const page = await browser.newPage();
     await page.goto('https://www.realoem.com/bmw/enUS/select', { waitUntil: 'domcontentloaded' });
 
@@ -27,18 +26,36 @@ app.post('/vin', async (req, res) => {
       page.waitForNavigation({ waitUntil: 'domcontentloaded' })
     ]);
 
-    const html = await page.content();
-    const lowerHTML = html.toLowerCase();
-    const partMatch = lowerHTML.match(/\\b[0-9]{7}\\b/g); // Buscar códigos de parte de 7 dígitos
+    const currentURL = page.url();
+
+    // Buscar links que contengan el nombre de la pieza (ej. "blower", "regulator")
+    const links = await page.$$eval('a', (elements) =>
+      elements
+        .filter(el => el.textContent.toLowerCase().includes('blower') || el.textContent.toLowerCase().includes('regulator'))
+        .map(el => ({ href: el.href, text: el.textContent.trim() }))
+    );
+
+    let partNumbers = [];
+
+    if (links.length > 0) {
+      await page.goto(links[0].href, { waitUntil: 'domcontentloaded' });
+
+      const html = await page.content();
+      const matches = html.match(/\b[0-9]{7}\b/g);
+      if (matches) {
+        partNumbers = [...new Set(matches)];
+      }
+    }
 
     await browser.close();
 
     return res.json({
       vin,
       pieza,
-      found_parts: partMatch ? [...new Set(partMatch)] : [],
-      source: 'RealOEM',
-      success: partMatch !== null
+      category_found: links.length > 0 ? links[0].text : 'No encontrada',
+      found_parts: partNumbers,
+      source: 'RealOEM (v2)',
+      success: partNumbers.length > 0
     });
 
   } catch (error) {
@@ -47,9 +64,9 @@ app.post('/vin', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Agent Q (RealOEM BMW Scraper) is running');
+  res.send('Agent Q v2 (RealOEM Deep Scraper) is running');
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Agent Q v2 running on port ${PORT}`);
 });
