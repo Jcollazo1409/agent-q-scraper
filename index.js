@@ -1,18 +1,13 @@
 const express = require('express');
 const puppeteer = require('puppeteer');
+const stringSimilarity = require('string-similarity');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
 function normalize(text) {
-  return text.toLowerCase().replace(/[^a-z0-9]/gi, '');
-}
-
-function isFuzzyMatch(target, rowText) {
-  const words = normalize(target).split(/\s+/);
-  const haystack = normalize(rowText);
-  return words.some(word => haystack.includes(word));
+  return text.toLowerCase().replace(/[^a-z0-9 ]+/g, '').trim();
 }
 
 app.post('/vin', async (req, res) => {
@@ -43,13 +38,14 @@ app.post('/vin', async (req, res) => {
       }))
     );
 
-    let partNumbers = [];
+    let partNumber = '';
+    let matchedText = '';
+    let score = 0;
     let matchedCategory = '';
-    let matchedRow = '';
     let matchedDiagram = '';
 
-    for (const link of categoryLinks) {
-      await page.goto(link.href, { waitUntil: 'domcontentloaded' });
+    for (const cat of categoryLinks) {
+      await page.goto(cat.href, { waitUntil: 'domcontentloaded' });
 
       const subLinks = await page.$$eval('a', anchors =>
         anchors
@@ -61,26 +57,32 @@ app.post('/vin', async (req, res) => {
         await page.goto(sub.href, { waitUntil: 'domcontentloaded' });
 
         const rows = await page.$$eval('table tr', trs =>
-          trs.map(tr => tr.innerText)
+          trs.map(tr => {
+            const tds = tr.querySelectorAll('td');
+            return {
+              desc: tds[1] ? tds[1].innerText.trim() : '',
+              part: tds[5] ? tds[5].innerText.trim() : ''
+            };
+          })
         );
 
+        const userDesc = normalize(pieza);
         for (const row of rows) {
-          if (isFuzzyMatch(pieza, row)) {
-            matchedRow = row;
+          const descNorm = normalize(row.desc);
+          const similarity = stringSimilarity.compareTwoStrings(userDesc, descNorm);
+          if (similarity > 0.3 && similarity > score) {
+            score = similarity;
+            partNumber = row.part;
+            matchedText = row.desc;
+            matchedCategory = cat.alt || '';
             matchedDiagram = sub.text;
-            const matches = row.match(/\b[0-9]{7}\b/g);
-            if (matches) {
-              partNumbers = [...new Set(matches)];
-              matchedCategory = link.alt || link.href;
-              break;
-            }
           }
         }
 
-        if (partNumbers.length > 0) break;
+        if (partNumber) break;
       }
 
-      if (partNumbers.length > 0) break;
+      if (partNumber) break;
     }
 
     await browser.close();
@@ -90,10 +92,11 @@ app.post('/vin', async (req, res) => {
       pieza,
       matched_category: matchedCategory,
       matched_diagram: matchedDiagram,
-      matched_row: matchedRow,
-      found_parts: partNumbers,
-      source: 'RealOEM (v2.4)',
-      success: partNumbers.length > 0
+      matched_description: matchedText,
+      score,
+      part_number: partNumber,
+      source: 'RealOEM (v2.5)',
+      success: partNumber !== ''
     });
 
   } catch (error) {
@@ -102,9 +105,9 @@ app.post('/vin', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Agent Q v2.4 is running');
+  res.send('Agent Q v2.5 is running');
 });
 
 app.listen(PORT, () => {
-  console.log(`Agent Q v2.4 running on port ${PORT}`);
+  console.log(`Agent Q v2.5 running on port ${PORT}`);
 });

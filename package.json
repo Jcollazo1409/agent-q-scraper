@@ -1,13 +1,14 @@
 {
-  "name": "agent-q-v2-4",
-  "version": "2.4.0",
+  "name": "agent-q-v2-5",
+  "version": "2.5.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "puppeteer": "^21.3.8"
+    "puppeteer": "^21.3.8",
+    "string-similarity": "^4.0.4"
   },
   "puppeteer": {
     "skip_chromium_download": false
