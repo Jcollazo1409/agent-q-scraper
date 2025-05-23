@@ -1,6 +1,6 @@
 {
-  "name": "agent-q-v2-2",
-  "version": "2.2.0",
+  "name": "agent-q-v2-4",
+  "version": "2.4.0",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

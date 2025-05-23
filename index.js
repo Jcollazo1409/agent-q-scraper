@@ -5,6 +5,16 @@ const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
+function normalize(text) {
+  return text.toLowerCase().replace(/[^a-z0-9]/gi, '');
+}
+
+function isFuzzyMatch(target, rowText) {
+  const words = normalize(target).split(/\s+/);
+  const haystack = normalize(rowText);
+  return words.some(word => haystack.includes(word));
+}
+
 app.post('/vin', async (req, res) => {
   const { vin, pieza } = req.body;
 
@@ -26,33 +36,48 @@ app.post('/vin', async (req, res) => {
       page.waitForNavigation({ waitUntil: 'domcontentloaded' })
     ]);
 
-    const keywords = pieza.toLowerCase().split(/\s|\\n|\n/).filter(word => word.length > 2);
-    const links = await page.$$eval('a', (elements) =>
-      elements
-        .filter(el => el.textContent.toLowerCase().match(/blower|regulator|climate|heater|ac|hvac|air/i))
-        .map(el => ({ href: el.href, text: el.textContent.trim() }))
+    const categoryLinks = await page.$$eval('map area', areas =>
+      areas.map(a => ({
+        href: a.href,
+        alt: a.alt
+      }))
     );
 
     let partNumbers = [];
-    let matchedLink = 'none';
-    let matchedLine = '';
+    let matchedCategory = '';
+    let matchedRow = '';
+    let matchedDiagram = '';
 
-    for (const link of links) {
+    for (const link of categoryLinks) {
       await page.goto(link.href, { waitUntil: 'domcontentloaded' });
-      const rows = await page.$$eval('table tr', trs =>
-        trs.map(tr => tr.innerText.toLowerCase().trim())
+
+      const subLinks = await page.$$eval('a', anchors =>
+        anchors
+          .filter(a => a.href.includes('showparts'))
+          .map(a => ({ href: a.href, text: a.textContent.trim() }))
       );
 
-      for (const row of rows) {
-        if (keywords.some(word => row.includes(word))) {
-          matchedLine = row;
-          const matches = row.match(/\b[0-9]{7}\b/g);
-          if (matches) {
-            partNumbers = [...new Set(matches)];
-            matchedLink = link.text;
-            break;
+      for (const sub of subLinks) {
+        await page.goto(sub.href, { waitUntil: 'domcontentloaded' });
+
+        const rows = await page.$$eval('table tr', trs =>
+          trs.map(tr => tr.innerText)
+        );
+
+        for (const row of rows) {
+          if (isFuzzyMatch(pieza, row)) {
+            matchedRow = row;
+            matchedDiagram = sub.text;
+            const matches = row.match(/\b[0-9]{7}\b/g);
+            if (matches) {
+              partNumbers = [...new Set(matches)];
+              matchedCategory = link.alt || link.href;
+              break;
+            }
           }
         }
+
+        if (partNumbers.length > 0) break;
       }
 
       if (partNumbers.length > 0) break;
@@ -63,10 +88,11 @@ app.post('/vin', async (req, res) => {
     return res.json({
       vin,
       pieza,
-      matched_category: matchedLink,
-      matched_row: matchedLine,
+      matched_category: matchedCategory,
+      matched_diagram: matchedDiagram,
+      matched_row: matchedRow,
       found_parts: partNumbers,
-      source: 'RealOEM (v2.2)',
+      source: 'RealOEM (v2.4)',
       success: partNumbers.length > 0
     });
 
@@ -76,9 +102,9 @@ app.post('/vin', async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('Agent Q v2.2 is running');
+  res.send('Agent Q v2.4 is running');
 });
 
 app.listen(PORT, () => {
-  console.log(`Agent Q v2.2 running on port ${PORT}`);
+  console.log(`Agent Q v2.4 running on port ${PORT}`);
 });
